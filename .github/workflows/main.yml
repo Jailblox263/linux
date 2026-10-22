@@ -23,9 +23,8 @@ jobs:
 
     - name: Descargar BusyBox para la TTY nativa
       run: |
-        wget https://busybox.net
-        chmod +x busybox
-
+        sudo apt install busybox
+        
     - name: Estructurar los archivos de la ISO
       run: |
         # Creando el esqueleto de carpetas del CD
