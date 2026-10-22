@@ -1,29 +1,68 @@
-name: KJail OS
+name: Generar ISO de kernel-jailbloxz
 
 on:
-  workflow_dispatch: # Esto te permite activar la compilación manualmente con un botón
+  workflow_dispatch:
 
 jobs:
-  build:
+  build-iso:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Clonar mi código fuente
+    - name: Clonar código fuente
       uses: actions/checkout@v4
 
-    - name: Instalar herramientas de compilación
+    - name: Instalar herramientas esenciales e ISO
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc
-
-    - name: Generar configuración básica
-      run: make defconfig # Esto genera una configuración base estable
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc xorriso syslinux syslinux-utils
 
     - name: Compilar el Kernel
-      run: make -j$(nproc) bzImage
+      run: |
+        make defconfig
+        make -j$(nproc) bzImage
 
-    - name: Subir mi Kernel terminado
+    - name: Descargar BusyBox para la TTY nativa
+      run: |
+        wget https://busybox.net
+        chmod +x busybox
+
+    - name: Estructurar los archivos de la ISO
+      run: |
+        # Creando el esqueleto de carpetas del CD
+        mkdir -p iso_root/boot/syslinux
+        mkdir -p iso_root/rootfs/bin
+        
+        # Mover tu kernel y el ejecutable BusyBox
+        cp arch/x86/boot/bzImage iso_root/boot/vmlinuz
+        cp busybox iso_root/rootfs/bin/init
+        
+        # Crear sistema de archivos temporal minimalista (initramfs)
+        cd iso_root/rootfs
+        echo -e '#!/bin/init\nexec /bin/init sh' > init
+        chmod +x init
+        find . | cpio -o -H newc | gzip > ../boot/initrd.img
+        cd ../..
+
+    - name: Configurar el menú de arranque de la ISO
+      run: |
+        # Copiar archivos necesarios de Syslinux para que la ISO sea booteable
+        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 iso_root/boot/syslinux/
+        cp /usr/lib/ISOLINUX/isolinux.bin iso_root/boot/syslinux/
+        
+        # Crear el menú de inicio tradicional de la ISO
+        echo -e "DEFAULT jailbloxz\nLABEL jailbloxz\n  KERNEL /boot/vmlinuz\n  INITRD /boot/initrd.img" > iso_root/boot/syslinux/isolinux.cfg
+
+    - name: Construir archivo ISO final
+      run: |
+        xorriso -as mkisofs \
+          -o kernel-jailbloxz.iso \
+          -b boot/syslinux/isolinux.bin \
+          -c boot/syslinux/boot.cat \
+          -no-emul-boot -boot-load-size 4 -boot-info-table \
+          iso_root
+
+    - name: Subir mi ISO Terminada
       uses: actions/upload-artifact@v4
       with:
-        name: kernel-jailblox
-        path: arch/x86/boot/bzImage
+        name: ISO-jailbloxz
+        path: kernel-jailbloxz.iso
